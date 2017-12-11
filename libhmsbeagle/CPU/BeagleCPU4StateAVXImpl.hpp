@@ -130,6 +130,7 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_FLOAT>::calcStatesStates(float* des
 									 }
 
 
+
 BEAGLE_CPU_4_AVX_TEMPLATE
 void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesStates(double* destP,
                                      const int* states_q,
@@ -137,30 +138,155 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesStates(double* d
                                      const int* states_r,
                                      const double* matrices_r) {
 
-	VecUnion vu_mq[OFFSET][2], vu_mr[OFFSET][2];
+//	BeagleCPU4StateSSEImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesStates(destP, states_q, matrices_q, states_r, matrices_r);
+//	return;
 
-    int w = 0;
-	V_Real *destPvec = (V_Real *)destP;
+	__m256d cache[OFFSET * OFFSET];
+	__m256d * dest = (__m256d *) destP;
 
+#pragma omp parallel for num_threads(kCategoryCount)
     for (int l = 0; l < kCategoryCount; l++) {
-
-    	//AVX_PREFETCH_MATRICES(matrices_q + w, matrices_r + w, vu_mq, vu_mr);
-
-        for (int k = 0; k < kPatternCount; k++) {
-
-            const int state_q = states_q[k];
-            const int state_r = states_r[k];
-
-            *destPvec++ = VEC_MULT(vu_mq[state_q][0].vx, vu_mr[state_r][0].vx);
-            *destPvec++ = VEC_MULT(vu_mq[state_q][1].vx, vu_mr[state_r][1].vx);
-
+        int w = l*4*OFFSET;
+        int u = 0;
+        int x = 0;
+        for (int state2 = 0; state2 < OFFSET; state2++) {
+        		register const __m256d ymm2 = _mm256_setr_pd(
+                    matrices_r[w            + state2],
+                    matrices_r[w + OFFSET*1 + state2],
+                    matrices_r[w + OFFSET*2 + state2],
+                    matrices_r[w + OFFSET*3 + state2]
+            		);
+        		for (int state1 = 0; state1 < OFFSET; state1++) {
+        			register const __m256d ymm1 = _mm256_setr_pd(
+                            matrices_q[w            + state1],
+                            matrices_q[w + OFFSET*1 + state1],
+                            matrices_q[w + OFFSET*2 + state1],
+                            matrices_q[w + OFFSET*3 + state1]
+                    		);
+                    cache[x++] = _mm256_mul_pd(ymm2, ymm1);
+        		}
         }
-
-        w += OFFSET*4;
-        if (kExtraPatterns)
-        	destPvec += kExtraPatterns * 2;
+		for (int k = 0; k < kPatternCount; k++) {
+			const int state1 = states_q[k];
+			const int state2 = states_r[k];
+			*dest++ = cache[state1 * OFFSET + state2];
+        }
+		if (kExtraPatterns)
+			dest += kExtraPatterns * 2;
     }
+
+//	__m256d * dest = (__m256d *) destP;
+//#pragma omp parallel for num_threads(kCategoryCount)
+//    for (int l = 0; l < kCategoryCount; l++) {
+////        int v = l*4*kPaddedPatternCount;
+//        int w = l*4*OFFSET;
+//
+//        for (int k = 0; k < kPatternCount; k++) {
+//
+//            const int state1 = states_q[k];
+//            const int state2 = states_r[k];
+//
+//            const __m256d vec1 = _mm256_setr_pd(
+//                    matrices_q[w            + state1],
+//                    matrices_q[w + OFFSET*1 + state1],
+//                    matrices_q[w + OFFSET*2 + state1],
+//                    matrices_q[w + OFFSET*3 + state1]
+//            		);
+//            const __m256d vec2 = _mm256_setr_pd(
+//                    matrices_r[w            + state2],
+//                    matrices_r[w + OFFSET*1 + state2],
+//                    matrices_r[w + OFFSET*2 + state2],
+//                    matrices_r[w + OFFSET*3 + state2]
+//            		);
+//
+//            *dest++ = _mm256_mul_pd(vec1, vec2);
+//        }
+//        if (kExtraPatterns)
+//        		dest += kExtraPatterns * 2;
+//    }
+//    return;
 }
+
+BEAGLE_CPU_4_AVX_TEMPLATE
+void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesStatesFixedScaling(double* destP,
+                                     const int* states_q,
+                                     const double* matrices_q,
+                                     const int* states_r,
+                                     const double* matrices_r,
+									const double* __restrict scaleFactors) {
+
+//	BeagleCPU4StateSSEImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesStatesFixedScaling(destP, states_q, matrices_q, states_r, matrices_r, scaleFactors);
+//	return;
+
+	__m256d cache[OFFSET * OFFSET];
+	__m256d * dest = (__m256d *) destP;
+
+#pragma omp parallel for num_threads(kCategoryCount)
+    for (int l = 0; l < kCategoryCount; l++) {
+        int w = l*4*OFFSET;
+        int u = 0;
+        int x = 0;
+        for (int state2 = 0; state2 < OFFSET; state2++) {
+            register const __m256d ymm2 = _mm256_setr_pd(
+                    matrices_r[w            + state2],
+                    matrices_r[w + OFFSET*1 + state2],
+                    matrices_r[w + OFFSET*2 + state2],
+                    matrices_r[w + OFFSET*3 + state2]
+            		);
+        		for (int state1 = 0; state1 < OFFSET; state1++) {
+        			register const __m256d ymm1 = _mm256_setr_pd(
+                            matrices_q[w            + state1],
+                            matrices_q[w + OFFSET*1 + state1],
+                            matrices_q[w + OFFSET*2 + state1],
+                            matrices_q[w + OFFSET*3 + state1]
+                    		);
+                    cache[x++] = _mm256_mul_pd(ymm2, ymm1);
+        		}
+        }
+		for (int k = 0; k < kPatternCount; k++) {
+			const int state1 = states_q[k];
+			const int state2 = states_r[k];
+			*dest++ = _mm256_div_pd(cache[state1 * OFFSET + state2], _mm256_set1_pd(scaleFactors[k]));
+        }
+		if (kExtraPatterns)
+			dest += kExtraPatterns * 2;
+    }
+
+//	__m256d * dest = (__m256d *) destP;
+//#pragma omp parallel for num_threads(kCategoryCount)
+//    for (int l = 0; l < kCategoryCount; l++) {
+//        int w = l*4*OFFSET;
+//
+//        for (int k = 0; k < kPatternCount; k++) {
+//
+//            const int state1 = states_q[k];
+//            const int state2 = states_r[k];
+//
+//            const __m256d vec1 = _mm256_setr_pd(
+//                    matrices_q[w            + state1],
+//                    matrices_q[w + OFFSET*1 + state1],
+//                    matrices_q[w + OFFSET*2 + state1],
+//                    matrices_q[w + OFFSET*3 + state1]
+//            		);
+//            const __m256d vec2 = _mm256_setr_pd(
+//                    matrices_r[w            + state2],
+//                    matrices_r[w + OFFSET*1 + state2],
+//                    matrices_r[w + OFFSET*2 + state2],
+//                    matrices_r[w + OFFSET*3 + state2]
+//            		);
+//
+//            __m256d unscaled = _mm256_mul_pd(vec1, vec2);
+//            *dest++ = _mm256_div_pd(unscaled, _mm256_set1_pd(scaleFactors[k]));
+//        }
+//        if (kExtraPatterns)
+//        		dest += kExtraPatterns * 2;
+//    }
+//    return;
+}
+
+
+
+
 
 /*
  * Calculates partial likelihoods at a node when one child has states and one has partials.
@@ -188,47 +314,185 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesPartials(double*
                                        const double* matrices_q,
                                        const double* partials_r,
                                        const double* matrices_r) {
+//	BeagleCPU4StateSSEImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesPartials(destP, states_q, matrices_q, partials_r, matrices_r);
+//	return;
+	__m256d * dest = (__m256d *) destP;
 
-    int v = 0;
-    int w = 0;
-
-    fprintf(stderr, "Not yet implemented!\n");
-    exit(-1);
-
- 	VecUnion vu_mq[OFFSET][2], vu_mr[OFFSET][2];
-	V_Real *destPvec = (V_Real *)destP;
-	V_Real destr_01, destr_23;
-
+#pragma omp parallel for num_threads(kCategoryCount)
     for (int l = 0; l < kCategoryCount; l++) {
+//        int u = l*4*kPaddedPatternCount;
+        int w = l*4*OFFSET;
 
-    	//AVX_PREFETCH_MATRICES(matrices_q + w, matrices_r + w, vu_mq, vu_mr);
+        // PREFETCH_MATRIX(2,matrices_r,w);
+//        double m200, m201, m202, m203,
+//               m210, m211, m212, m213,
+//               m220, m221, m222, m223,
+//               m230, m231, m232, m233;
+//        m200 = matrices_r[w + OFFSET*0 + 0];
+//        m201 = matrices_r[w + OFFSET*0 + 1];
+//        m202 = matrices_r[w + OFFSET*0 + 2];
+//        m203 = matrices_r[w + OFFSET*0 + 3];
+//        m210 = matrices_r[w + OFFSET*1 + 0];
+//        m211 = matrices_r[w + OFFSET*1 + 1];
+//        m212 = matrices_r[w + OFFSET*1 + 2];
+//        m213 = matrices_r[w + OFFSET*1 + 3];
+//        m220 = matrices_r[w + OFFSET*2 + 0];
+//        m221 = matrices_r[w + OFFSET*2 + 1];
+//        m222 = matrices_r[w + OFFSET*2 + 2];
+//        m223 = matrices_r[w + OFFSET*2 + 3];
+//        m230 = matrices_r[w + OFFSET*3 + 0];
+//        m231 = matrices_r[w + OFFSET*3 + 1];
+//        m232 = matrices_r[w + OFFSET*3 + 2];
+//        m233 = matrices_r[w + OFFSET*3 + 3];
 
+//        __m256d  * matrix20 = (__m256d *) (matrices_r  + w);
+//        __m256d  * matrix21 = (__m256d *) (matrices_r  + w + OFFSET*1);
+//        __m256d  * matrix22 = (__m256d *) (matrices_r  + w + OFFSET*2);
+//        __m256d  * matrix23 = (__m256d *) (matrices_r  + w + OFFSET*3);
+
+
+        const __m256d ymm0 = _mm256_setr_pd(
+                matrices_r[w            ],
+                matrices_r[w + OFFSET*1 ],
+                matrices_r[w + OFFSET*2 ],
+                matrices_r[w + OFFSET*3 ]
+        		);
+        const __m256d ymm1 = _mm256_setr_pd(
+                matrices_r[w            + 1],
+                matrices_r[w + OFFSET*1 + 1],
+                matrices_r[w + OFFSET*2 + 1],
+                matrices_r[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm2 = _mm256_setr_pd(
+                matrices_r[w            + 2],
+                matrices_r[w + OFFSET*1 + 2],
+                matrices_r[w + OFFSET*2 + 2],
+                matrices_r[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm3 = _mm256_setr_pd(
+                matrices_r[w            + 3],
+                matrices_r[w + OFFSET*1 + 3],
+                matrices_r[w + OFFSET*2 + 3],
+                matrices_r[w + OFFSET*3 + 3]
+        		);
+
+        __m256d matrixQ[5];
+        matrixQ[0] = _mm256_setr_pd(
+                matrices_q[w            ],
+                matrices_q[w + OFFSET*1 ],
+                matrices_q[w + OFFSET*2 ],
+                matrices_q[w + OFFSET*3 ]
+        		);
+        matrixQ[1] = _mm256_setr_pd(
+                matrices_q[w            + 1],
+                matrices_q[w + OFFSET*1 + 1],
+                matrices_q[w + OFFSET*2 + 1],
+                matrices_q[w + OFFSET*3 + 1]
+        		);
+        matrixQ[2] = _mm256_setr_pd(
+                matrices_q[w            + 2],
+                matrices_q[w + OFFSET*1 + 2],
+                matrices_q[w + OFFSET*2 + 2],
+                matrices_q[w + OFFSET*3 + 2]
+        		);
+        matrixQ[3] = _mm256_setr_pd(
+                matrices_q[w            + 3],
+                matrices_q[w + OFFSET*1 + 3],
+                matrices_q[w + OFFSET*2 + 3],
+                matrices_q[w + OFFSET*3 + 3]
+        		);
+        matrixQ[4] = _mm256_set1_pd(1.0);
+
+
+
+//        __m256d * p = (__m256d *) (partials_r);
+        const double * p = partials_r;
         for (int k = 0; k < kPatternCount; k++) {
 
-            const int state_q = states_q[k];
-            V_Real vp0, vp1, vp2, vp3;
-            AVX_PREFETCH_PARTIALS(vp,partials_r,v);
+            //PREFETCH_PARTIALS(2,partials_r,u);
+//            double p20, p21, p22, p23;
+//                p20 = partials_r[u + 0];
+//                p21 = partials_r[u + 1];
+//                p22 = partials_r[u + 2];
+//                p23 = partials_r[u + 3];
 
-			destr_01 = VEC_MULT(vp0, vu_mr[0][0].vx);
-			destr_01 = VEC_MADD(vp1, vu_mr[1][0].vx, destr_01);
-			destr_01 = VEC_MADD(vp2, vu_mr[2][0].vx, destr_01);
-			destr_01 = VEC_MADD(vp3, vu_mr[3][0].vx, destr_01);
-			destr_23 = VEC_MULT(vp0, vu_mr[0][1].vx);
-			destr_23 = VEC_MADD(vp1, vu_mr[1][1].vx, destr_23);
-			destr_23 = VEC_MADD(vp2, vu_mr[2][1].vx, destr_23);
-			destr_23 = VEC_MADD(vp3, vu_mr[3][1].vx, destr_23);
+            // DO_INTEGRATION(2); // defines sum20, sum21, sum22, sum23;
+//            double sum20, sum21, sum22, sum23; \
+//            sum20  = m200 * p20 +
+//                           m201 * p21 +
+//                           m202 * p22 +
+//                           m203 * p23;
+//
+//            sum21  = m210 * p20 +
+//                           m211 * p21 +
+//                           m212 * p22 +
+//                           m213 * p23;
+//
+//            sum22  = m220 * p20 +
+//                           m221 * p21 +
+//                           m222 * p22 +
+//                           m223 * p23;
+//
+//            sum23  = m230 * p20 +
+//                           m231 * p21 +
+//                           m232 * p22 +
+//                           m233 * p23;
 
-            *destPvec++ = VEC_MULT(vu_mq[state_q][0].vx, destr_01);
-            *destPvec++ = VEC_MULT(vu_mq[state_q][1].vx, destr_23);
 
-            v += 4;
+            __m256d sum = _mm256_mul_pd(_mm256_set1_pd(*p++), ymm0);
+            sum = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm1, sum);
+            sum = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm2, sum);
+            sum = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm3, sum);
+
+
+
+
+//            __m256d sum0 = _mm256_mul_pd(*p, *matrix20);
+//            __m256d sum1 = _mm256_mul_pd(*p, *matrix21);
+//            __m256d sum2 = _mm256_mul_pd(*p, *matrix22);
+//            __m256d sum3 = _mm256_mul_pd(*p, *matrix23);
+//
+//            __m256d sum01 = _mm256_hadd_pd(sum0, sum1);
+//            // extract upper 128 bits of result
+//            __m128d sum_high01 = _mm256_extractf128_pd(sum01, 1);
+//            // add upper 128 bits of sum to its lower 128 bits
+//            __m128d result01 = _mm_add_pd(sum_high01, _mm256_castpd256_pd128(sum01));
+//
+//            __m256d sum23 = _mm256_hadd_pd(sum2, sum3);
+//            // extract upper 128 bits of result
+//            __m128d sum_high23 = _mm256_extractf128_pd(sum23, 1);
+//            // add upper 128 bits of sum to its lower 128 bits
+//            __m128d result23 = _mm_add_pd(sum_high23, _mm256_castpd256_pd128(sum23));
+
+//            destP[u    ] = matrices_q[w            + state1] * sum20;
+//            destP[u + 1] = matrices_q[w + OFFSET*1 + state1] * sum21;
+//            destP[u + 2] = matrices_q[w + OFFSET*2 + state1] * sum22;
+//            destP[u + 3] = matrices_q[w + OFFSET*3 + state1] * sum23;
+
+            const int state1 = states_q[k];
+//            const __m256d matrix1 = _mm256_setr_pd(
+//                    matrices_q[w            + state1],
+//                    matrices_q[w + OFFSET*1 + state1],
+//                    matrices_q[w + OFFSET*2 + state1],
+//                    matrices_q[w + OFFSET*3 + state1]
+//            		);
+//             __m256d sum = _mm256_setr_pd(
+//                    result01[0],
+//                    result01[1],
+//                    result23[0],
+//                    result23[1]
+//            		);
+
+            *dest++ = _mm256_mul_pd(matrixQ[state1], sum);
+
+//            u += 4;
+//            p++;
         }
-        w += OFFSET*4;
-        if (kExtraPatterns) {
-        	destPvec += kExtraPatterns * 2;
-        	v += kExtraPatterns * 4;
-        }
+        if (kExtraPatterns)
+        		dest += kExtraPatterns * 2;
     }
+
+    return;
 }
 
 BEAGLE_CPU_4_AVX_TEMPLATE
@@ -254,47 +518,103 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesPartialsFixedSca
                                 const double* __restrict partials_r,
                                 const double* __restrict matrices_r,
                                 const double* __restrict scaleFactors) {
+//	BeagleCPU4StateSSEImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcStatesPartialsFixedScaling(destP, states_q, matrices_q, partials_r, matrices_r, scaleFactors);
+//	return;
+	__m256d * dest = (__m256d *) destP;
 
-
-    int v = 0;
-    int w = 0;
-
- 	VecUnion vu_mq[OFFSET][2], vu_mr[OFFSET][2];
-	V_Real *destPvec = (V_Real *)destP;
-	V_Real destr_01, destr_23;
-
+#pragma omp parallel for num_threads(kCategoryCount)
     for (int l = 0; l < kCategoryCount; l++) {
+        int w = l*4*OFFSET;
 
-    	//AVX_PREFETCH_MATRICES(matrices_q + w, matrices_r + w, vu_mq, vu_mr);
+        const __m256d ymm0 = _mm256_setr_pd(
+                matrices_r[w            ],
+                matrices_r[w + OFFSET*1 ],
+                matrices_r[w + OFFSET*2 ],
+                matrices_r[w + OFFSET*3 ]
+        		);
+        const __m256d ymm1 = _mm256_setr_pd(
+                matrices_r[w            + 1],
+                matrices_r[w + OFFSET*1 + 1],
+                matrices_r[w + OFFSET*2 + 1],
+                matrices_r[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm2 = _mm256_setr_pd(
+                matrices_r[w            + 2],
+                matrices_r[w + OFFSET*1 + 2],
+                matrices_r[w + OFFSET*2 + 2],
+                matrices_r[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm3 = _mm256_setr_pd(
+                matrices_r[w            + 3],
+                matrices_r[w + OFFSET*1 + 3],
+                matrices_r[w + OFFSET*2 + 3],
+                matrices_r[w + OFFSET*3 + 3]
+        		);
 
+        const double * p = partials_r;
         for (int k = 0; k < kPatternCount; k++) {
+            __m256d ymm4 = _mm256_mul_pd(_mm256_set1_pd(*p++), ymm0);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm1, ymm4);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm2, ymm4);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*p++), ymm3, ymm4);
 
-        	const V_Real scaleFactor = VEC_SPLAT(scaleFactors[k]);
+            const int state1 = states_q[k];
+            const __m256d matrix1 = _mm256_setr_pd(
+                    matrices_q[w            + state1],
+                    matrices_q[w + OFFSET*1 + state1],
+                    matrices_q[w + OFFSET*2 + state1],
+                    matrices_q[w + OFFSET*3 + state1]
+            		);
 
-            const int state_q = states_q[k];
-            V_Real vp0, vp1, vp2, vp3;
-            AVX_PREFETCH_PARTIALS(vp,partials_r,v);
-
-			destr_01 = VEC_MULT(vp0, vu_mr[0][0].vx);
-			destr_01 = VEC_MADD(vp1, vu_mr[1][0].vx, destr_01);
-			destr_01 = VEC_MADD(vp2, vu_mr[2][0].vx, destr_01);
-			destr_01 = VEC_MADD(vp3, vu_mr[3][0].vx, destr_01);
-			destr_23 = VEC_MULT(vp0, vu_mr[0][1].vx);
-			destr_23 = VEC_MADD(vp1, vu_mr[1][1].vx, destr_23);
-			destr_23 = VEC_MADD(vp2, vu_mr[2][1].vx, destr_23);
-			destr_23 = VEC_MADD(vp3, vu_mr[3][1].vx, destr_23);
-
-            *destPvec++ = VEC_DIV(VEC_MULT(vu_mq[state_q][0].vx, destr_01), scaleFactor);
-            *destPvec++ = VEC_DIV(VEC_MULT(vu_mq[state_q][1].vx, destr_23), scaleFactor);
-
-            v += 4;
+        		ymm4 = _mm256_mul_pd(matrix1, ymm4);
+            *dest++ = _mm256_div_pd(ymm4, _mm256_set1_pd(scaleFactors[k]));
         }
-        w += OFFSET*4;
-        if (kExtraPatterns) {
-        	destPvec += kExtraPatterns * 2;
-        	v += kExtraPatterns * 4;
-        }
+        if (kExtraPatterns)
+        		dest += kExtraPatterns * 2;
     }
+
+    return;
+//
+//
+//    int v = 0;
+//    int w = 0;
+//
+// 	VecUnion vu_mq[OFFSET][2], vu_mr[OFFSET][2];
+//	V_Real *destPvec = (V_Real *)destP;
+//	V_Real destr_01, destr_23;
+//
+//    for (int l = 0; l < kCategoryCount; l++) {
+//
+//    	//AVX_PREFETCH_MATRICES(matrices_q + w, matrices_r + w, vu_mq, vu_mr);
+//
+//        for (int k = 0; k < kPatternCount; k++) {
+//
+//        	const V_Real scaleFactor = VEC_SPLAT(scaleFactors[k]);
+//
+//            const int state_q = states_q[k];
+//            V_Real vp0, vp1, vp2, vp3;
+//            AVX_PREFETCH_PARTIALS(vp,partials_r,v);
+//
+//			destr_01 = VEC_MULT(vp0, vu_mr[0][0].vx);
+//			destr_01 = VEC_MADD(vp1, vu_mr[1][0].vx, destr_01);
+//			destr_01 = VEC_MADD(vp2, vu_mr[2][0].vx, destr_01);
+//			destr_01 = VEC_MADD(vp3, vu_mr[3][0].vx, destr_01);
+//			destr_23 = VEC_MULT(vp0, vu_mr[0][1].vx);
+//			destr_23 = VEC_MADD(vp1, vu_mr[1][1].vx, destr_23);
+//			destr_23 = VEC_MADD(vp2, vu_mr[2][1].vx, destr_23);
+//			destr_23 = VEC_MADD(vp3, vu_mr[3][1].vx, destr_23);
+//
+//            *destPvec++ = VEC_DIV(VEC_MULT(vu_mq[state_q][0].vx, destr_01), scaleFactor);
+//            *destPvec++ = VEC_DIV(VEC_MULT(vu_mq[state_q][1].vx, destr_23), scaleFactor);
+//
+//            v += 4;
+//        }
+//        w += OFFSET*4;
+//        if (kExtraPatterns) {
+//        	destPvec += kExtraPatterns * 2;
+//        	v += kExtraPatterns * 4;
+//        }
+//    }
 }
 
 BEAGLE_CPU_4_AVX_TEMPLATE
@@ -317,6 +637,93 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcPartialsPartials(doubl
                                                   const double*  matrices_q,
                                                   const double*  partials_r,
                                                   const double*  matrices_r) {
+
+	__m256d * dest = (__m256d *) destP;
+#pragma omp parallel for num_threads(kCategoryCount)
+    for (int l = 0; l < kCategoryCount; l++) {
+//        int u = l*4*kPaddedPatternCount;
+        int w = l*4*OFFSET;
+
+        //PREFETCH_MATRIX(1,matrices_q,w);
+        const __m256d ymm10 = _mm256_setr_pd(
+                matrices_q[w            ],
+                matrices_q[w + OFFSET*1 ],
+                matrices_q[w + OFFSET*2 ],
+                matrices_q[w + OFFSET*3 ]
+        		);
+        const __m256d ymm11 = _mm256_setr_pd(
+                matrices_q[w            + 1],
+                matrices_q[w + OFFSET*1 + 1],
+                matrices_q[w + OFFSET*2 + 1],
+                matrices_q[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm12 = _mm256_setr_pd(
+                matrices_q[w            + 2],
+                matrices_q[w + OFFSET*1 + 2],
+                matrices_q[w + OFFSET*2 + 2],
+                matrices_q[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm13 = _mm256_setr_pd(
+                matrices_q[w            + 3],
+                matrices_q[w + OFFSET*1 + 3],
+                matrices_q[w + OFFSET*2 + 3],
+                matrices_q[w + OFFSET*3 + 3]
+        		);
+        //PREFETCH_MATRIX(2,matrices_r,w);
+        const __m256d ymm20 = _mm256_setr_pd(
+                matrices_r[w            ],
+                matrices_r[w + OFFSET*1 ],
+                matrices_r[w + OFFSET*2 ],
+                matrices_r[w + OFFSET*3 ]
+        		);
+        const __m256d ymm21 = _mm256_setr_pd(
+                matrices_r[w            + 1],
+                matrices_r[w + OFFSET*1 + 1],
+                matrices_r[w + OFFSET*2 + 1],
+                matrices_r[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm22 = _mm256_setr_pd(
+                matrices_r[w            + 2],
+                matrices_r[w + OFFSET*1 + 2],
+                matrices_r[w + OFFSET*2 + 2],
+                matrices_r[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm23 = _mm256_setr_pd(
+                matrices_r[w            + 3],
+                matrices_r[w + OFFSET*1 + 3],
+                matrices_r[w + OFFSET*2 + 3],
+                matrices_r[w + OFFSET*3 + 3]
+        		);
+        const double * pq = partials_q;
+        const double * pr = partials_r;
+        for (int k = 0; k < kPatternCount; k++) {
+            //PREFETCH_PARTIALS(1,partials_q,u);
+            //PREFETCH_PARTIALS(2,partials_r,u);
+
+            //DO_INTEGRATION(1); // defines sum10, sum11, sum12, sum13
+            __m256d sumq = _mm256_mul_pd(_mm256_set1_pd(*pq++), ymm10);
+            sumq = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm11, sumq);
+            sumq = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm12, sumq);
+            sumq = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm13, sumq);
+            //DO_INTEGRATION(2); // defines sum20, sum21, sum22, sum23
+            __m256d sumr = _mm256_mul_pd(_mm256_set1_pd(*pr++), ymm20);
+            sumr = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm21, sumr);
+            sumr = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm22, sumr);
+            sumr = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm23, sumr);
+
+
+            // Final results
+            *dest++ = _mm256_mul_pd(sumq, sumr);
+            //*dest++ = _mm256_div_pd(sum, _mm256_set1_pd(scaleFactors[k]));
+
+            //u += 4;
+
+        }
+        if (kExtraPatterns)
+        		dest += kExtraPatterns * 2;
+    }
+    return;
+
 
     int v = 0;
     int w = 0;
@@ -443,7 +850,89 @@ void BeagleCPU4StateAVXImpl<BEAGLE_CPU_4_AVX_DOUBLE>::calcPartialsPartialsFixedS
 		                                                        const double* matrices_r,
 		                                                        const double* scaleFactors) {
 
-    int v = 0;
+	__m256d * dest = (__m256d *) destP;
+#pragma omp parallel for num_threads(kCategoryCount)
+    for (int l = 0; l < kCategoryCount; l++) {
+//        int u = l*4*kPaddedPatternCount;
+        int w = l*4*OFFSET;
+
+        //PREFETCH_MATRIX(1,matrices_q,w);
+        const __m256d ymm10 = _mm256_setr_pd(
+                matrices_q[w            ],
+                matrices_q[w + OFFSET*1 ],
+                matrices_q[w + OFFSET*2 ],
+                matrices_q[w + OFFSET*3 ]
+        		);
+        const __m256d ymm11 = _mm256_setr_pd(
+                matrices_q[w            + 1],
+                matrices_q[w + OFFSET*1 + 1],
+                matrices_q[w + OFFSET*2 + 1],
+                matrices_q[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm12 = _mm256_setr_pd(
+                matrices_q[w            + 2],
+                matrices_q[w + OFFSET*1 + 2],
+                matrices_q[w + OFFSET*2 + 2],
+                matrices_q[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm13 = _mm256_setr_pd(
+                matrices_q[w            + 3],
+                matrices_q[w + OFFSET*1 + 3],
+                matrices_q[w + OFFSET*2 + 3],
+                matrices_q[w + OFFSET*3 + 3]
+        		);
+        //PREFETCH_MATRIX(2,matrices_r,w);
+        const __m256d ymm0 = _mm256_setr_pd(
+                matrices_r[w            ],
+                matrices_r[w + OFFSET*1 ],
+                matrices_r[w + OFFSET*2 ],
+                matrices_r[w + OFFSET*3 ]
+        		);
+        const __m256d ymm1 = _mm256_setr_pd(
+                matrices_r[w            + 1],
+                matrices_r[w + OFFSET*1 + 1],
+                matrices_r[w + OFFSET*2 + 1],
+                matrices_r[w + OFFSET*3 + 1]
+        		);
+        const __m256d ymm2 = _mm256_setr_pd(
+                matrices_r[w            + 2],
+                matrices_r[w + OFFSET*1 + 2],
+                matrices_r[w + OFFSET*2 + 2],
+                matrices_r[w + OFFSET*3 + 2]
+        		);
+        const __m256d ymm3 = _mm256_setr_pd(
+                matrices_r[w            + 3],
+                matrices_r[w + OFFSET*1 + 3],
+                matrices_r[w + OFFSET*2 + 3],
+                matrices_r[w + OFFSET*3 + 3]
+        		);
+        const double * pq = partials_q;
+        const double * pr = partials_r;
+        for (int k = 0; k < kPatternCount; k++) {
+            //PREFETCH_PARTIALS(1,partials_q,u);
+            //PREFETCH_PARTIALS(2,partials_r,u);
+
+            //DO_INTEGRATION(1); // defines sum10, sum11, sum12, sum13
+            __m256d ymm4 = _mm256_mul_pd(_mm256_set1_pd(*pq++), ymm10);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm11, ymm4);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm12, ymm4);
+            ymm4 = _mm256_fmadd_pd(_mm256_set1_pd(*pq++), ymm13, ymm4);
+            //DO_INTEGRATION(2); // defines sum20, sum21, sum22, sum23
+            __m256d ymm5 = _mm256_mul_pd(_mm256_set1_pd(*pr++), ymm0);
+            ymm5 = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm1, ymm5);
+            ymm5 = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm2, ymm5);
+            ymm5 = _mm256_fmadd_pd(_mm256_set1_pd(*pr++), ymm3, ymm5);
+
+
+            // Final results
+            ymm4 = _mm256_mul_pd(ymm4, ymm5);
+            *dest++ = _mm256_div_pd(ymm4, _mm256_set1_pd(scaleFactors[k]));
+
+            //u += 4;
+
+        }
+    }
+    return;    int v = 0;
     int w = 0;
 
     V_Real	destq_01, destq_23, destr_01, destr_23;

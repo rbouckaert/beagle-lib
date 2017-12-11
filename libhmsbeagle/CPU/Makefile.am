@@ -42,7 +42,8 @@ libhmsbeagle_cpu_avx_la_SOURCES = $(BEAGLE_CPU_COMMON) \
                     BeagleCPUSSEImpl.hpp BeagleCPUSSEImpl.h \
 		BeagleCPUAVXPlugin.h BeagleCPUAVXPlugin.cpp
 
-libhmsbeagle_cpu_avx_la_CXXFLAGS = $(AM_CXXFLAGS) -mavx
+#libhmsbeagle_cpu_avx_la_CXXFLAGS = $(AM_CXXFLAGS) -mavx 
+libhmsbeagle_cpu_avx_la_CXXFLAGS = $(AM_CXXFLAGS) -mavx2 -mfma 
 libhmsbeagle_cpu_avx_la_LDFLAGS= -module -version-number $(MODULE_VERSION)
 endif
 

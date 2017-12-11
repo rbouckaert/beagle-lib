@@ -87,7 +87,7 @@ private:
                                   const int* states2,
                                   const float* matrices2);
     
-    virtual void calcStatesPartials(float* destP,
+	virtual void calcStatesPartials(float* destP,
                                     const int* states1,
                                     const float* __restrict matrices1,
                                     const float* __restrict partials2,
@@ -168,6 +168,13 @@ private:
                                   const int* states2,
                                   const double* matrices2);
     
+    virtual void calcStatesStatesFixedScaling(double* destP,
+                                  const int* states1,
+                                  const double* matrices1,
+                                  const int* states2,
+                                  const double* matrices2,
+                                  const double* __restrict scaleFactors);
+
     virtual void calcStatesPartials(double* destP,
                                     const int* states1,
                                     const double* __restrict matrices1,
